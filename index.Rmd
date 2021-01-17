@@ -1,0 +1,299 @@
+---
+title: "Afectación del COVID-19 en el pequeño comercio valenciano"
+subtitle: "Carlos Rodriguez Gonzalvo(carogon4@alumni.uv.es)" #- pongo tú nombre ahí para q aparezca más grande q el de la UV
+author: "Universitat de València"
+date: "Diciembre de 2020 (actualizado el `r format(Sys.time(), '%d-%m-%Y')`)"
+output:
+  html_document:
+    #css: "./assets/my_css_file.css"
+    theme: paper
+    highlight: textmate 
+    toc: true
+    toc_depth: 3 
+    toc_float: 
+      collapsed: true
+      smooth_scroll: true
+    self_contained: true
+    number_sections: false
+    df_print: kable
+    code_download: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r packages-setup, include = FALSE}
+library(tidyverse)
+library(klippy)  #- remotes::install_github("rlesur/klippy")
+library(knitr)
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(leaflet)
+library(plotly)
+
+```
+
+```{r chunk-setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = TRUE, message = FALSE, warning = FALSE, 
+                      #results = "hold",
+                      cache = FALSE, cache.path = "/caches/", comment = "#>",
+                      #fig.width = 7, #fig.height= 7,   
+                      #out.width = 7, out.height = 7,
+                      collapse = TRUE,  fig.show = "hold",
+                      fig.asp = 7/9, out.width = "60%", fig.align = "center")
+knitr::opts_chunk$set(dev = "png", dev.args = list(type = "cairo-png"))
+```
+
+```{r options-setup, include = FALSE}
+options(scipen = 999) #- para quitar la notación científica
+options("yaml.eval.expr" = TRUE) 
+```
+
+
+```{r klippy, echo = FALSE}
+klippy::klippy(position = c("top", "right")) #- remotes::install_github("rlesur/klippy")
+```
+
+<hr class="linea-black">
+
+Trabajo elaborado para la asignatura "Programación y manejo de datos en la era del Big Data" de la Universitat de València durante el curso 2020-2021. El repo del trabajo está [aquí](https://github.com/carlosrodriguezgonzalvo/trabajo_BigData){target="_blank"}. La página web de la asignatura y los trabajos de mis compañeros pueden verse [aquí](https://perezp44.github.io/intro-ds-20-21-web/07-trabajos.html){target="_blank"}.
+
+<!-- El párrafo de arriba has de dejarlo casi igual, 
+        solo HAS de SUSTITUIR las 2 veces que aparece "perezp44" por tu usuario de Github-->
+
+<hr class="linea-red">
+
+# 1. INTRODUCCIÓN
+
+En el lugar he realizado las prácticas curriculares, **Unió Gremial – Federació de Gremis i Associacions del Comerç Valencià**, hemos analizando el impacto del COVID19 en el pequeño comercio valenciano. Para ello hemos elaborado una [encuesta](https://forms.gle/4YeXYSu4HmeYxBMYA) dirigida a los pequeños comercios^[más de 100 asociaciones distribuidas por toda la Comunidad Valenciana] adheridos a las asociaciones de Unió Gremial.
+
+![Foto de la última camapaña de UG](./imagenes/ComerçBrutal.jpg){width=30%}
+
+
+
+
+
+
+
+
+ En este trabajo veremos como se ha visto reducida la facturación en los diferentes trimestres de este último año, el problema de la digitalización en el pequeño comercio (lo cual supone un gran reto para el futuro del sector), las previsiones futuras dadas las expectativas de futuras medidas restrictivas a causa de la segunda ola de la pandemia y la importancia de la campaña de Navidad para estos negocios. 
+
+# 2. DATOS
+
+En este caso, los datos de este trabajo se han obtenido en exclusiva del excel generado automáticamente por la herramienta de Google que permite hacer encuestas (encuesta anteriormente mencionada, con su respectivo link). Cabe destacar que he tenido que modificar la primera fila del excel donde aparecía la pregunta entera, lo cual a la hora de trabajar con R podría haber sido complicado. 
+A continuación, muestro una tabla en la que se ven todos los resultados de dicha encuesta, y con los cuales voy a trabajar el resto del trabajo. 
+
+```{r, eval = TRUE, echo = TRUE}
+excel <- read_excel("./Datos/RESPUESTAS_ENCUESTA_COVID.xlsx") 
+encuesta <- excel %>% select(-MARCA, -HABITANTES, -DISTANCIA, -CONSECUENCIAS_PANDEMIA, -SERVICIOS_VENTA_ONLINE, -FINANCIACION_EXTERNA, -INCREMENTO_VENTAS_ONLINE, -24, -25)
+DT::datatable(encuesta, class = 'cell-border stripe', filter = "top", rownames = FALSE)
+```
+
+# 3. ANÁLISIS DE LA ENCUESTA
+A continuación, paso a explicar con detalle los datos más importantes extraidos de la encuesta realizada. 
+
+## 3.1 SECTORES MÁS REPRESENTATIVOS.
+
+Entre los sectores más representativos encontramos en primera posición a las Agencias de Viaje. Esto se debe a que desde la Asociación Empresarial Valenciana de Agencias de Viaje (AEVAV), fueron muchos de sus asociados los que se perdieron un poco de su tiempo para responder las diferentes cuestiones. 
+En segundo lugar hosteleria y tiendas de ropa. 
+Como se puede intuir son sectores que se han visto bastante castigados dadas las restricciones impuestas por los diferentes gobiernos. Esto hace que los resultados de la encuesta, como veremos más adelante sean poco alentadores para la economía valenciana. 
+
+```{r, eval = TRUE, echo = TRUE}
+sectores <- encuesta %>% group_by(SECTOR) %>% summarise(N=n()) %>% slice_max(N, n=5) %>%
+    mutate(SECTOR = forcats::as_factor(SECTOR))
+graficosectores <- ggplot (sectores, aes (x=N, y=SECTOR), aes(fct_rev(SECTOR))) + geom_bar(stat = "identity", fill = "skyblue") + labs(title = "Cinco sectores más representativos de la encuesta", x="Número de comercios", y="Sector") + theme_minimal()
+graficosectores
+```
+
+## 3.2 MUNICIPIOS MÁS REPRESENTATIVOS
+Para representar los municipios que más han contestado al cuestionario, he realizado un mapa. 
+De todas formas, los cinco municipios más presentes en la encuesta son:
+
+  1. Valencia con 65 observaciones
+  2. Buñol con 37 observaciones
+  3. Benifaio con 28 observaciones 
+  4. Alzira con 27 observaciones
+  5. Ontinyent con 22 observaciones
+
+Por lo que podemos afirmar que la muestra obtenida refleja bien el tejido comercial valenciano, ya que hemos obtenido datos de muchos municipios diferentes. 
+
+```{r, eval = TRUE, echo = TRUE}
+municipios <- encuesta %>% group_by(MUNICIPIO) %>% summarise(N=n()) %>% slice_max(N, n=5)
+
+mapaCiudadyPueblomayorinciAcu <- leaflet() %>% 
+  addPopups(lng = -0.37480, lat = 39.47973 , popup = "Valencia") %>%
+  addPopups(lng = -0.79031, lat = 39.41447 , popup = "Buñol") %>%
+  addPopups(lng = -0.42500, lat = 39.28439 , popup = "Benifaio") %>%
+  addPopups(lng = -0.42666, lat = 39.15447 , popup = "Alzira") %>%
+  addPopups(lng = -0.30950, lat = 39.19868 , popup = "Sueca") %>%
+  setView(lng = -0.5, lat = 39.500, zoom = 8.5) %>%  addTiles()
+mapaCiudadyPueblomayorinciAcu
+``` 
+
+## 3.3 AFECTACIÓN DEL COVID-19
+
+En primer lugar, me he centrado en la pregunta más básica:
+**¿El COVID19 ha afectado de forma negativa en su negocio?** 
+
+```{r, eval = TRUE, echo = TRUE}
+afectacion <- encuesta %>% group_by(AFECTACION) %>% summarise(N=n()) %>% na.omit() %>% mutate (porcentaje=prop.table(N)*100, round(porcentaje, 2)) 
+graficoafectacion <- ggplot(afectacion, aes(x="", y = round(porcentaje, 2), fill=AFECTACION)) +     geom_bar(stat ="identity", color = "white") + 
+    geom_text(aes(label = round(porcentaje, 2)), position = position_stack(vjust=0.5), color="white", size = 5, ) + 
+  coord_polar(theta = "y") + 
+  scale_fill_manual(values = c("steelblue", "red")) + 
+  theme_void() + 
+  labs(title = "¿Ha afectado de forma negativa el COVID-19 en su negocio?")
+graficoafectacion
+```
+Como podemos observar, el 92.55% de los encuestados ha contestado que sí que ha tenido una afectación negativa. Mientras que los que han respondido que no, representan la minoría de comercios, cabe destacar que se trata de comercios los cuales se consideran esenciales (buscar en la tabla en la columna AFECTACIÓN: "No"). 
+
+## 3.4 AFECTACIÓN POR TRIMESTRES 
+
+En este apartado voy a analizar mediante un gráfico conocido como de quesitos, la pérdida de facturación de los comercios en los tres trimestres en los que ha estado presente la pandemia. Es decir, en el segundo trimestre, tercer trimestre y cuarto trimestre de 2020. 
+Como podemos observar los resultados son bastante similares con una leve mejora en el tercer trimestre respecto al segundo.
+
+### 3.4.1 SEGUNDO TRIMESTRE DE 2020
+En este primer trimestre analizado (segundo trimestre del 2020), los resultados mostrados son tremendamente malos. Ya que como podemos observar el 54,96% de los comercios han pérdido más del 50% de la facturación respecto al mismo trimestre del año pasado. 
+Por contra, el 8,59% han perdido solo entre el 0 y el 10% de dicha facturación. 
+
+```{r, eval = TRUE, echo = TRUE}
+trimestres <- encuesta %>% group_by(SEGUNDOTRIMESTRE) %>% summarise(N=n()) %>% na.omit() %>% arrange(desc(N)) %>% mutate(porcentaje=prop.table(N)*100, round(porcentaje, 2))
+
+graficotrimestre2 <- ggplot(trimestres, aes(x="", y = round(porcentaje, 2), fill=SEGUNDOTRIMESTRE)) +     geom_bar(stat ="identity", color = "white") + 
+    geom_text(aes(label = round(porcentaje, 2)), position = position_stack(vjust=0.5), color="white", size = 5, ) + 
+  coord_polar(theta = "y")  + 
+  theme_void() + 
+  scale_fill_manual(values = c("STEELBLUE", "BLUE", "ORANGE", "RED","BROWN","GREEN", "DARKGREY"))+
+  labs(title = "¿Cuánto ha visto reducida su facturación en el 2T2020?")
+graficotrimestre2 + theme(panel.grid.major = element_line(linetype = "blank")) +labs(fill = "FACTURACIÓN PERDIDA") 
+```
+
+### 3.4.2 TERCER TRIMESTRE DE 2020
+En el tercer trimestre, y con la llegada del verano y la llamada "Nueva Normalidad", establecida en el territorio español a partir del mes de mayo, parecía que el la economía iba a resurgir. Pero nada más lejos de la realidad, las restricciones y la incertidumbre de los consumidores hicieron que durante todo el verano no se diera la recuperación esperada. 
+Aunque cabe mencionar que si que se observa un ligero atisbo de mejora. Ya que en este caso se ha reducido más de 10 puntos porcentuales los encuestados que indicaron que perdieron más del 50% de la facturación. 
+Si nos fijamos en los encuestados menos afectados (0-10%), vemos como en este caso son un 13,38%, cifra ligeramente superior a la del trimestre anterior. 
+
+```{r, eval = TRUE, echo = TRUE}
+trimestres <- encuesta %>% group_by(TERCERTRIMESTRE) %>% summarise(N=n()) %>% na.omit() %>% arrange(desc(N)) %>% mutate(porcentaje=prop.table(N)*100, round(porcentaje, 2)) 
+
+graficotrimestre3 <- ggplot(trimestres, aes(x="", y = round(porcentaje, 2), fill=TERCERTRIMESTRE)) +     geom_bar(stat ="identity", color = "white") + 
+    geom_text(aes(label = round(porcentaje, 2)), position = position_stack(vjust=0.5), color="white", size = 5, ) + 
+  coord_polar(theta = "y")  + 
+  theme_void() + 
+  scale_fill_manual(values = c("STEELBLUE", "BLUE", "ORANGE", "RED","BROWN","GREEN", "DARKGREY"))+
+  labs(title = "¿Cuánto ha visto reducida su facturación en el 3T2020?")
+graficotrimestre3 + theme(panel.grid.major = element_line(linetype = "blank")) +labs(fill = "FACTURACIÓN PERDIDA") 
+```
+
+### 3.4.3 CUARTO TRIMESTRE DE 2020
+Por último, analizamos el último trimestre del año, el cual muestra resultados muy parecidos a los del trimestre anterior. 
+Esto quiere decir que durante el transcurso del año el pequeño comercio valenciano no pudo remontar la situación provocada por la crisis de la pandemia, que impidió durante la gran parte del año 2020, que los comercios desarrollarán su actividad con total normalidad y sin restricciones. 
+
+```{r, eval = TRUE, echo = TRUE}
+trimestres <- encuesta %>% group_by(CUARTOTRIMESTRE) %>% summarise(N=n()) %>% na.omit() %>% arrange(desc(N)) %>% mutate(porcentaje=prop.table(N)*100, round(porcentaje, 2))
+
+graficotrimestre4 <- ggplot(trimestres, aes(x="", y = round(porcentaje, 2), fill=CUARTOTRIMESTRE)) +     geom_bar(stat ="identity", color = "white") + 
+    geom_text(aes(label = round(porcentaje, 2)), position = position_stack(vjust=0.5), color="white", size = 5, ) + 
+  coord_polar(theta = "y")  + 
+  theme_void() + 
+  scale_fill_manual(values = c("STEELBLUE", "BLUE", "ORANGE", "RED","BROWN","GREEN", "DARKGREY"))+
+  labs(title = "¿Cuánto ha visto reducida su facturación en el 4T2020?")
+graficotrimestre4 + theme(panel.grid.major = element_line(linetype = "blank")) +labs(fill = "FACTURACIÓN PERDIDA")
+```
+
+
+## 3.5 DIGITALIZACIÓN DEL PEQUEÑO COMERCIO
+
+En este punto, voy a hablar de unos de los mayores problemas del pequeño comercio y del comercio tradicional en general, **la digitalización**. Y es que en muchos casos, el comercio tradicional ha sido sobrepasado por las nuevas tecnologías, ya que actualmente, es dificil ver por ejemplo, una carnicería o verdulería de un mercado municipal vendiendo sus productos en internet.Culpa de ello lo tienen también las grandes tecnológicas como Amazon, las cuales han hecho que nos acostumbremos a ir de compras a golpe de "click" desde el sofá de nuestra casa, abandonando en cierto modo el comercio del barrio de toda la vida. 
+
+```{r, eval = TRUE, echo = TRUE}
+digitalizacion <- encuesta %>% group_by(VENTA_ONLINE) %>% summarise (N=n()) %>% na.omit()
+graficodigitalizacion <- ggplot(digitalizacion, aes(x= VENTA_ONLINE, y=N)) + geom_bar(stat = "identity", fill ="steelblue") + theme_minimal()
+graficodigitalizacion + theme(panel.grid.major = element_line(linetype = "blank"), 
+    panel.background = element_rect(fill = NA), 
+    plot.background = element_rect(colour = NA)) +labs(title = "¿Su negocio dispone de un servicio de venta online?", 
+    x = "¿Venta Online?", y = "Número de comercios")
+```
+Como he dicho anteriormente, y como muestran los resultados, actualmente la falta de digitalización en el sector comercial valenciano es un reto que hay que abordar. Y es que más de 300 comercios son los que han contestado que no disponen de servicio de venta online, mientras que solo un poco más de 150 han sido los que han contestado que sí. 
+
+## 3.6 AYUDAS AL PEQUEÑO COMERCIO
+
+Durante la pandemía, los gobiernos han tenido que recurrir a ciertas ayudas de apoyo a los empresarios y autónomos, ya que ante la obligación de tener que cerrar obligatoriamente, el gobierno tuvo que apoyar a los trabajadores de dichos comercios.
+Dichas ayudas podemos consultarlas en la página web de la [Conselleria d'Economia de la Generalitat Valenciana](http://www.indi.gva.es/es/web/comercio/incentivos).
+
+```{r, eval = TRUE, echo = TRUE}
+ayudas <- encuesta %>% group_by(AYUDAS) %>% summarise(respuestas = n()) %>% na.omit()
+graficoayudas <- ggplot(ayudas, aes(x= AYUDAS, y= respuestas)) + geom_bar(stat = "identity", fill = "steelblue") + labs(title = "¿Ha solicitado ayudas a las AAPP ante la crisis del COVID19?") + theme_minimal() + geom_text(aes(label=respuestas), positicion = position_stack(vjust = 0.5), color = "black", size = 4)
+graficoayudas
+```
+Como vemos, 386 han solicitado ayudas, mientras que 44 de los que si que han solicitado, no las habian recibido en el momento de la contestación de la encuesta. Por su parte 147 comerciantes no pidieron ningún tipo de ayuda. 
+
+En el siguiente gráfico, hemos preguntado: **¿Le parecen suficientes las ayudas recibidas por las AAPP?**. Pregunta, a la que como es de esperar cuando alguien tiene que valorar la cuantía de una ayuda económica, han respondido de forma mayoritaria que no han sido suficientes. 
+
+```{r, eval = TRUE, echo = TRUE}
+ayudas1 <- encuesta %>% group_by(AYUDA_SUFICIENTE) %>% summarise(respuestas = n()) %>% na.omit() %>% mutate(porcentaje=prop.table(respuestas)*100, round(porcentaje, 2))
+graficoayudas1 <- ggplot(ayudas1, aes(x="", y = round(porcentaje, 2), fill=AYUDA_SUFICIENTE)) +
+    geom_bar(stat ="identity", color = "white") +
+    geom_text(aes(label = round(porcentaje, 2)), position = position_stack(vjust=0.5), color="white", size = 5, ) +
+  coord_polar(theta = "y") + theme_void()  
+graficoayudas1+labs(title = "¿Considera suficientes las ayudas recibidas?")
+```
+
+## 3.7 CIERRE DE LOS COMERCIOS DEBIDO A LA PANDEMIA
+
+Como he mencionado anteriormente, los negocios se vieron obligados a cerrar en la primera ola de la pandemia debido a las restricciones de movilidad impuestas por el gobierno central. 
+Este cierre fue en cierta medida asimétrico y dependió principalmente del tipo de negocio. 
+
+```{r, eval = TRUE, echo = TRUE}
+cierre <- encuesta %>% group_by(TIEMPO_CERRADO) %>% summarise(observaciones = n()) %>% na.omit() %>% arrange(-observaciones)
+graficocierre <- ggplot(cierre, aes(x = TIEMPO_CERRADO, y = observaciones)) + 
+        geom_bar(stat = "identity", fill = "brown") +
+        labs(title = "¿Cuánto tiempo ha estado su negocio cerrado dada la crisis del COVID19?", x = "Tiempo cerrado", y = "Observaciones") + theme_minimal()
+graficocierre
+```
+
+Como observamos, la gran mayoría de comercios estuvieron cerrados dos meses o más. siendo un total de más de 400 encuestados los que estuvieron cerrados dicho tiempo.
+Por contra menos de 75 comercios han estado cerrados un mes o menos. Estos resultados arrojan una situación más que preocupante, ya que el comercio valenciano está sufriendo serias dificutlades para remontar dicha situación negativa. 
+
+
+Con los resultados obtenidos, está claro que muchos de los encuestados han tenido serias dificultades económicas dadas las restricciones que obligaban a cerrar cualquier negocio considerado no esencial. 
+Ante estos resultados donde hemos visto que gran cantidad de negocios han permanecido cerrados un tiempo más que significativo. Es inevitable analizar la cuestión de cuántos de ellos se han planteado el cierre de sus negocios dada la situación. 
+
+```{r, echo = TRUE, eval = TRUE}
+cese <- encuesta %>% group_by(CIERRE) %>% summarise(observaciones = n()) %>% na.omit() %>% mutate(porcentaje=prop.table(observaciones)*100, round(porcentaje, 2))
+
+graficocese <-  ggplot(cese, aes(x="", y = round(porcentaje, 2), fill=CIERRE)) +
+    geom_bar(stat ="identity", color = "white") +
+    geom_text(aes(label = round(porcentaje, 2)), position = position_stack(vjust=0.5), color="white", size = 5, ) +
+  coord_polar(theta = "y") + theme_void() 
+graficocese + labs (title = "¿Se ha planteado cerrar de forma permanente su negocio dada la situación?")
+```
+En este gráfico se muestra una realidad más que precupante, ya que el 45% de los encuestados han contestado que se han planteado cerrar de forma permanente su negocio. 
+Esto refleja que la situación del pequeño comercio valenciano es generalmente poco solvente y con poco margen de maniobra. 
+
+## 3.8 CAMPAÑA DE NAVIDAD
+
+Ante las dificultades sufridas en la primera mitad del año 2020, la campaña de Navidad tenía una importancia en algunos casos vital para el comercio valenciano, ya que podía ser la clave para remontar los resultados económicos tan malos de los meses anteriores.
+
+```{r, echo = TRUE, eval = TRUE}
+navidad <- encuesta %>% group_by(IMPORTANCIA_NAVIDAD) %>% summarise(importancia = n()) %>% na.omit()
+graficonavidad <- ggplot(navidad, aes(x = IMPORTANCIA_NAVIDAD, y = importancia)) + 
+        geom_bar(stat = "identity", fill = "red") +
+        labs(title = "¿Qué importante va a ser la campaña de Navidad en su Negocio?", x = "Importancia campaña Navidad", y = "observaciones") + theme_minimal()
+graficonavidad
+```
+Como podemos comprobar en el gráfico, la mayoría de las contestaciones es que la campaña de Navidad era muy importante o importante para su comercio. 
+Ahora bien, sabiendo *a posteriori* como ha ido dicha campaña, es de esperar que el pequeño comercio valenciano esté pasando un comienzo de año 2021 económicamente complicado. 
+
+# 4. CONCLUSIONES
+
+A modo de conclusión, como hemos visto a lo largo de este trabajo, el pequeño comercio valenciano ha sido un sector el cual ha sido muy castigado por la crisis económica provocada por la pandemia del COVID19. 
+El tiempo que tuvieron que cerrar como su situación previa de falta de liquidez excesiva y de solvencia, hicieron que ante dicha crisis los comercios no estuvieran todo lo bien de preparados que la situación requería. 
+De todas formas las ayudas de los diferentes gobiernos, aunque en muchos casos, se han considerado insuficientes, han ayudado a mitigar el impacto negativo de la crisis. 
+
+
+# 5. BIBLIOGRAFÍA
+
+*[web del profesor](https://perezp44.github.io/intro-ds-20-21-web/05-slides.html).
+
+*[página dónde aprender a hacer gráficos de quesitos](https://rpubs.com/luis_bolanos/537899).
